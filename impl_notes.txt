@@ -1,0 +1,101 @@
+Implementation notes
+
+The info below was useful to have around as I was writing the program.
+
+---------
+
+Notes on segmentation: 
+
+struct user_desc {
+	unsigned int  entry_number;
+	unsigned int  base_addr;
+	unsigned int  limit;
+	unsigned int  seg_32bit:1;
+	unsigned int  contents:2;
+	unsigned int  read_exec_only:1;
+	unsigned int  limit_in_pages:1;
+	unsigned int  seg_not_present:1;
+	unsigned int  useable:1;
+}
+	desc->limit0 = info->limit & 0x0ffff;
+	desc->base0 = info->base_addr & 0x0000ffff;
+
+	desc->base1 = (info->base_addr & 0x00ff0000) >> 16;
+	desc->type = (info->read_exec_only ^ 1) << 1;
+	desc->type |= info->contents << 2;
+	desc->s = 1;
+	desc->dpl = 0x3;
+	desc->p = info->seg_not_present ^ 1;
+	desc->limit = (info->limit & 0xf0000) >> 16;
+	desc->avl = info->useable;
+	desc->d = info->seg_32bit;
+	desc->g = info->limit_in_pages;
+	desc->base2 = (info->base_addr & 0xff000000) >> 24;
+
+struct desc_struct {
+	union {
+		struct {
+			unsigned int a;
+			unsigned int b;
+		};
+		struct {
+			u16 limit0;
+			u16 base0;
+			unsigned base1: 8, type: 4, s: 1, dpl: 2, p: 1;
+			unsigned limit: 4, avl: 1 (na), l: 1 (=0), d: 1, g: 1, base2: 8;
+		};
+	};
+} __attribute__((packed));
+
+
+The type of the segment is stored in bits 43-41, and has one of the following values:
+Bit 43: executable (0=data segment, 1=code segment)
+Bit 42: expansion direction (for data segments), conforming (for code segments)
+Bit 41: read/write (for data segments: 0=RO, 1=RW) (for code segments: 0=Execute only, 1=Read/execute)
+
+
+-----------
+
+install_segments_from_parent() could be replaced by this kind of thing in the future
+
+/*
+  Unused for now because inline assembly is doing my head in ! 
+  Even though it would be a lot more straightforward and efficient
+*/
+#define INSTALL_SEGMENTS_FROM_CHILD () \
+{\
+asm("movl ... %eax");\
+int a = ( (1 << 3) | 0b11 |  DESCRIPTOR_SELECTION_BIT );\
+int b = ( (2 << 3) | 0b11 |  DESCRIPTOR_SELECTION_BIT );\
+regs->xds = a;\
+regs->xes = a;\
+regs->xfs = a;\
+regs->xgs = a;\
+regs->xss = b;\
+regs->esp -= data_seg;				\
+regs->ebp -= data_seg;				\
+asm("\tmov  *%0, %xds \n" :: "r" (a));		\
+}
+
+
+------------
+
+
+LDT manipulations : the plan
+1) Create LDT entry for data segment, equal to GDT entry
+2) Trap first instruction after execve() and change DS register to the new entry. Note this appears to be done autmoatically ! Check that the first trap is indeed at ip=0
+3) If this works (also test with CS), create the correct DS entry instead (ie shifted by data_seg)
+
+There is also the assumption in MINIX that stack segment = data segment !!!
+That's what the compiler seems to assume anyway
+Separating them leads to addressing errors
+Or is this just a lea instruction fail ? (see hello-ack.linuxaout.od at 2142)
+
+Anyway, one one to solve this is to set the SS to the be the same as DS and to adjust ESP accordingly to point to the right location (ie substract
+data_seg to it) 
+      
+
+Update : implementing user mode execve
+Code segment will be the same (starting from 0) but data segment will start from where the heap currently is, at data_seg.
+(I do not know how to move the heap, don't believe it's possible, so am moving the data segment instead) the data_seg = sbrk(0) returns the end of heap.
+

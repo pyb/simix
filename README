@@ -1,0 +1,42 @@
+Simix
+
+Pierre-Yves Baccou
+baccou@normalesup.org
+
+
+DESCRIPTION
+
+This is an application to run Minix binaries under Linux.
+The Minix process is traced with ptrace, Minix-style system calls are intercepted and replaced with Linux-style system calls on the fly.
+
+
+INSTALLATION
+
+1) Compile with "gcc -static -o ./simix ./minixtrap.c ./syscalls.c ./callnr.c linux_syscall.c" (or run ./compile.sh)
+
+2) Test with a Minix "Hello World" program : "./simix ./hellominix-ack" should work.
+
+3) It is useful to have Linux recognize Minix binaries as a misc binary format.
+Run "modprobe binfmt_misc" if necessary, then edit binfmt_string.sh to point to the correct location of simix, and run it as root.
+Running Minix binaries directly should now work under Linux: "./hellominix-ack" 
+
+4) To run useful applications, which expect to be running in a Minix installation, the best way is to create a "chroot jail" :
+ a) Create a directory eg. ~/minixroot, and copy the contents of /etc and /usr from a Minix installation to minixroot/usr and minixroot/etc.
+ b) To get the initial shell working, I had to copy /bin and /lib from my Linux installation to minixroot/bin and minixroot/lib
+ c) simix must be copied to minixroot, to a location that mirrors its location in your Linux filesystem.
+  eg if it is  located in /home/pyb/minix/simix, it must be copied to minixroot/home/pyb/minix/simix
+ d) "sudo chroot ./minixroot" should now be possible ; at least ack, gcc and vi and more simple apps should be working.
+
+
+LIMITATIONS
+
+I have yet to test simix seriously ; for instance with a Posix test suite. Just realized there is one distributed with Minix :)
+
+Networking doesn't work at all ; Linux and Minix use different devices and ioctls. I don't know if implementing networking is possible at all.
+
+
+MINIX BUILD
+
+To build Minix 3.1.5 under Linux, copy proto.gen (or the same file from your Minix partition) from this directory to ~/minixroot/usr/src/drivers/memory/ramdisk/proto.gen
+Otherwise this file will be generated during the build, incorrectly, under Linux (it reads the contents of /dev).
+Apart from that, the build procedure in the same ('make image' in usr/src/tools )
